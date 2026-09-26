@@ -146,6 +146,8 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command")
 
     def add_common(p: argparse.ArgumentParser) -> None:
+        # --version 同时挂在各子命令上，这样 `python review.py --version`（会被补成 review --version）也能用
+        p.add_argument("--version", action="version", version=f"Code Review Agent {__version__}")
         p.add_argument("--verbose", action="store_true", help="打印调试日志")
         p.add_argument("--no-color", action="store_true", help="关闭彩色输出")
         p.add_argument("--quiet", action="store_true", help="只输出最终结果")
