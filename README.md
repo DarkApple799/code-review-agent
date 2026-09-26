@@ -1,6 +1,6 @@
 # Code Review Agent · 代码审查 Agent
 
-> Homework 1 提交项目 ｜ 学号：2412190618 ｜ 姓名：钟伟杰
+> Homework 1 提交项目
 >
 > 一个用 **Python 标准库 + LLM 原生 API** 实现的代码审查 Agent：
 > 自己决定调用哪些工具、读哪些文件、如何验证结论，最后产出一份可交付的审查报告。
