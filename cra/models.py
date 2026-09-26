@@ -163,6 +163,9 @@ class ScanResult:
     findings: list[Finding] = field(default_factory=list)
     #: 相对路径 -> analysis.FileAnalysis.to_dict()，供工具按需回取结构化信息
     analyses: dict[str, dict] = field(default_factory=dict)
+    #: 单文件审查模式下的目标文件（相对 root 的路径）；None 表示整目录审查。
+    #: 工具层据此收窄可访问范围——否则"审一个文件"会退化成"审它所在的一整个目录"。
+    scope_file: str | None = None
     skipped: list[dict] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
     total_bytes_scanned: int = 0
@@ -200,6 +203,7 @@ class ScanResult:
     def to_dict(self, include_findings: bool = True) -> dict:
         data = {
             "root": self.root,
+            "scope_file": self.scope_file,
             "duration": round(self.duration, 3),
             "truncated": self.truncated,
             "total_bytes_scanned": self.total_bytes_scanned,

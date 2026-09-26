@@ -10,12 +10,13 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
 from ..config import Config
-from ..errors import ToolArgumentError, ToolError
+from ..errors import PathSecurityError, ToolArgumentError, ToolError
 from ..models import ScanResult, ToolTrace
 
 logger = logging.getLogger("cra.tools")
@@ -53,10 +54,34 @@ class ToolContext:
     scan: ScanResult | None = None
     submissions: list[dict] = field(default_factory=list)
     scan_calls: int = 0
+    #: 单文件审查模式下的目标文件（相对 root）。设置后所有工具只能访问这一个文件，
+    #: 避免"审一个文件"时 Agent 顺手把同目录（甚至整个桌面）的其他文件也读了。
+    scope_file: str | None = None
     logger: logging.Logger = logger
 
     def analyses(self) -> dict[str, dict]:
         return dict(self.scan.analyses) if self.scan else {}
+
+
+def ensure_in_scope(ctx: "ToolContext", absolute_path: str) -> None:
+    """单文件模式下校验目标路径，越界直接拒绝。
+
+    Args:
+        ctx: 工具上下文（含 scope_file）。
+        absolute_path: 已经过 safe_path 校验的绝对路径。
+
+    Raises:
+        PathSecurityError: 目标不是本次被指定的那个文件。
+    """
+    if not ctx.scope_file:
+        return
+    expected = os.path.normcase(os.path.abspath(os.path.join(ctx.root, ctx.scope_file)))
+    actual = os.path.normcase(os.path.abspath(absolute_path))
+    if actual != expected:
+        raise PathSecurityError(
+            f"本次只审查单个文件 {ctx.scope_file}，不允许访问其他路径（{os.path.basename(absolute_path)}）。"
+            "如果要审查整个目录，请把目录作为参数传入。"
+        )
 
 
 HandlerType = Callable[..., "str | ToolResult"]

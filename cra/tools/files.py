@@ -23,7 +23,7 @@ from ..fsutil import (
     safe_path,
     walk_files,
 )
-from .base import ToolContext
+from .base import ToolContext, ensure_in_scope
 
 #: 单个工具输出的字符上限，避免一次工具调用就把上下文撑爆。
 MAX_OUTPUT_CHARS = 6000
@@ -35,9 +35,22 @@ def _clip(text: str, limit: int = MAX_OUTPUT_CHARS) -> str:
     return text[:limit] + f"\n...（输出过长，已截断，共 {len(text)} 字符）"
 
 
+def _scoped_file_summary(ctx: ToolContext) -> str:
+    """单文件审查模式下，文件清单只有那一个文件——直接把它报给模型。"""
+    full = os.path.join(ctx.root, ctx.scope_file or "")
+    info = classify_file(full, ctx.cfg)
+    lines = f"{info.lines}行" if info.lines is not None else "-"
+    return (
+        "本次为单文件审查模式，只有 1 个文件可访问（访问其他路径会被拒绝）：\n"
+        f"{ctx.scope_file}  [{info.kind}/{info.language}, {human_size(info.size)}, {lines}]"
+    )
+
+
 # --------------------------------------------------------------------------- #
 def tool_list_files(ctx: ToolContext, path: str = ".", pattern: str = "*", max_results: int = 80) -> str:
     """列出工作区（或子目录）中的候选文件。"""
+    if ctx.scope_file:
+        return _scoped_file_summary(ctx)
     target = safe_path(ctx.root, path, must_exist=True)
     if os.path.isfile(target):
         candidates = [target]
@@ -76,6 +89,7 @@ def tool_read_file(
 ) -> str:
     """读取文件内容（带行号），支持从指定行开始的窗口读取。"""
     full = safe_path(ctx.root, path, must_exist=True)
+    ensure_in_scope(ctx, full)
     if os.path.isdir(full):
         raise ToolError(f"{path} 是目录，请改用 list_files 查看内容。")
 
@@ -128,7 +142,11 @@ def tool_search_code(
     except re.error as exc:
         raise ToolArgumentError(f"正则表达式非法：{exc}；如需匹配字面量请转义特殊字符。") from exc
 
-    candidates, _, _, _ = walk_files(ctx.root, ctx.cfg)
+    if ctx.scope_file:
+        # 单文件模式：只在这一个文件里检索
+        candidates = [os.path.join(ctx.root, ctx.scope_file)]
+    else:
+        candidates, _, _, _ = walk_files(ctx.root, ctx.cfg)
     hits: list[str] = []
     scanned = 0
     for full in candidates:
@@ -170,6 +188,8 @@ def tool_search_code(
 # --------------------------------------------------------------------------- #
 def tool_file_stats(ctx: ToolContext, path: str = ".") -> str:
     """统计目录规模：文件数、行数、语言分布（给 Agent 建立整体印象）。"""
+    if ctx.scope_file:
+        return _scoped_file_summary(ctx)
     target = safe_path(ctx.root, path, must_exist=True)
     candidates, skipped, total_bytes, truncated = walk_files(target, ctx.cfg)
     by_kind: dict[str, int] = {}

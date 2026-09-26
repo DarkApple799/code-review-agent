@@ -12,7 +12,7 @@ import os
 from ..analysis import analyze_source
 from ..errors import FileBoundaryError, ToolError
 from ..fsutil import classify_file, human_size, read_text_file, relpath, safe_path
-from .base import ToolContext
+from .base import ToolContext, ensure_in_scope
 
 MAX_FINDINGS_IN_OUTPUT = 30
 
@@ -20,6 +20,7 @@ MAX_FINDINGS_IN_OUTPUT = 30
 def tool_analyze_python(ctx: ToolContext, path: str) -> str:
     """对单个 Python 文件跑全部确定性规则，返回结构化 JSON。"""
     full = safe_path(ctx.root, path, must_exist=True)
+    ensure_in_scope(ctx, full)
     if os.path.isdir(full):
         raise ToolError(f"{path} 是目录；本工具只接受单个 .py 文件，请先用 list_files 选择文件。")
 
@@ -28,6 +29,12 @@ def tool_analyze_python(ctx: ToolContext, path: str) -> str:
         raise FileBoundaryError(f"{path} 是二进制文件，无法做 AST 分析。")
     if info.kind == "empty":
         raise FileBoundaryError(f"{path} 是空文件，没有任何可分析内容。")
+    if info.kind != "python":
+        # 把 .c/.js 之类丢给 Python 解析器只会得到一个"语法错误"假发现，这里直接说清楚
+        raise FileBoundaryError(
+            f"{relpath(ctx.root, full)} 不是 Python 源码（识别为 {info.language}），AST 规则不适用。"
+            "请改用 read_file 阅读内容并做语义审查。"
+        )
 
     rel = relpath(ctx.root, full)
     text, encoding, lossy, truncated = read_text_file(full, max_bytes=ctx.cfg.max_file_bytes)

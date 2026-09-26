@@ -35,9 +35,10 @@ def scan_workspace(
     """
     started = time.time()
     root = ensure_root(root)
-    result = ScanResult(root=root)
+    is_single = bool(only_file) and os.path.isfile(only_file or "")
+    result = ScanResult(root=root, scope_file=relpath(root, only_file) if is_single else None)
 
-    if only_file and os.path.isfile(only_file):
+    if is_single:
         paths, skipped, total_bytes, truncated = [only_file], [], os.path.getsize(only_file), False
     else:
         paths, skipped, total_bytes, truncated = walk_files(root, cfg)

@@ -228,5 +228,91 @@ class TestRegistry(unittest.TestCase):
         self.assertEqual(registry.traces[0].step, 2)
 
 
+class TestSingleFileScope(TempDirTestCase):
+    """单文件审查模式：所有工具都必须被限制在那一个文件上。
+
+    背景（真实 bug）：早期版本只收窄了"扫描范围"，工具作用域仍是目标文件所在目录，
+    于是 `review.py 某个文件` 会让 Agent 顺手把同目录（甚至整个桌面）的其他文件读进模型上下文。
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.cfg = Config(api_key="")
+        self.registry = build_default_registry()
+        self.target = os.path.join(self.root, "target.c")
+        with open(self.target, "w", encoding="utf-8") as handle:
+            handle.write("int main(void) { return 0; }\n")
+        # 邻居文件：既不该被列出，也不该被读到
+        with open(os.path.join(self.root, "secret.txt"), "w", encoding="utf-8") as handle:
+            handle.write("API_KEY=super-secret-value\n")
+        with open(os.path.join(self.root, "other.py"), "w", encoding="utf-8") as handle:
+            handle.write("x = 1\n")
+        self.ctx = ToolContext(root=self.root, cfg=self.cfg, scope_file="target.c")
+        self.ctx.scan = scan_workspace(self.root, self.cfg, only_file=self.target)
+
+    def call(self, name: str, **arguments):
+        return self.registry.execute(name, arguments, self.ctx, step=1)
+
+    def test_scan_records_scope_file(self) -> None:
+        self.assertEqual(self.ctx.scan.scope_file, "target.c")
+        self.assertEqual(len(self.ctx.scan.files), 1)
+
+    def test_named_tools_see_scope(self) -> None:
+        self.assertTrue(hasattr(self.ctx, "scope_file"))
+
+    def test_reading_target_is_allowed(self) -> None:
+        result = self.call("read_file", path="target.c")
+        self.assertTrue(result.ok)
+        self.assertIn("int main", result.output)
+
+    def test_reading_neighbour_is_rejected(self) -> None:
+        result = self.call("read_file", path="secret.txt")
+        self.assertFalse(result.ok)
+        self.assertIn("单个文件", result.error)
+
+    def test_path_traversal_still_rejected(self) -> None:
+        result = self.call("read_file", path="../../etc/passwd")
+        self.assertFalse(result.ok)
+
+    def test_list_files_hides_other_files(self) -> None:
+        result = self.call("list_files")
+        self.assertTrue(result.ok)
+        self.assertIn("target.c", result.output)
+        self.assertNotIn("secret.txt", result.output)
+
+    def test_search_code_stays_inside_scope(self) -> None:
+        result = self.call("search_code", pattern="API_KEY")
+        self.assertTrue(result.ok)
+        self.assertNotIn("secret.txt", result.output)
+        self.assertIn("没有匹配", result.output)
+
+    def test_file_stats_is_scoped(self) -> None:
+        result = self.call("file_stats")
+        self.assertTrue(result.ok)
+        self.assertIn("单文件审查模式", result.output)
+        self.assertNotIn("secret.txt", result.output)
+
+    def test_analyze_python_on_other_file_is_rejected(self) -> None:
+        result = self.call("analyze_python", path="other.py")
+        self.assertFalse(result.ok)
+        self.assertIn("单个文件", result.error)
+
+    def test_analyze_python_refuses_non_python_source(self) -> None:
+        """C/JS 文件不该喂给 Python 解析器（否则只会吐一个'语法错误'假发现）。"""
+        result = self.call("analyze_python", path="target.c")
+        self.assertFalse(result.ok)
+        self.assertIn("不是 Python 源码", result.error)
+
+    def test_scan_directory_ignores_path_argument(self) -> None:
+        result = self.call("scan_directory", path=".")
+        self.assertTrue(result.ok)
+        payload = json.loads(result.output)
+        self.assertEqual(payload["files_scanned"], 1)
+
+    def test_without_scope_everything_is_still_reachable(self) -> None:
+        plain = ToolContext(root=self.root, cfg=self.cfg)
+        self.assertTrue(self.registry.execute("read_file", {"path": "secret.txt"}, plain, step=1).ok)
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

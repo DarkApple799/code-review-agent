@@ -215,5 +215,42 @@ class TestJsonProtocol(AgentTestBase):
         )
 
 
+class TestSingleFileMode(AgentTestBase):
+    """回归测试：`review(only_file=...)` 时，Agent 不得读取目标文件之外的内容。"""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.other = os.path.join(self.root, "other.txt")
+        with open(self.other, "w", encoding="utf-8") as handle:
+            handle.write("SECRET=do-not-read-me\n")
+
+    def test_neighbour_file_cannot_be_read(self) -> None:
+        client = FakeClient(
+            [
+                LLMResponse(tool_calls=[tool_call("read_file", {"path": "other.txt"})]),
+                LLMResponse(tool_calls=[tool_call("submit_review", SUBMIT_ARGUMENTS, "c2")]),
+            ]
+        )
+        target = os.path.join(self.root, "bad.py")
+        _, outcome = self.make_agent(client).review(self.root, only_file=target)
+
+        self.assertFalse(outcome.trace[0].ok)
+        self.assertIn("单个文件", outcome.trace[0].error)
+        observation = [m for m in client.sent_messages[1] if m["role"] == "tool"][0]
+        self.assertIn("单个文件", observation["content"])
+        self.assertNotIn("do-not-read-me", observation["content"])
+
+    def test_target_file_is_readable(self) -> None:
+        client = FakeClient(
+            [
+                LLMResponse(tool_calls=[tool_call("read_file", {"path": "bad.py"})]),
+                LLMResponse(tool_calls=[tool_call("submit_review", SUBMIT_ARGUMENTS, "c2")]),
+            ]
+        )
+        _, outcome = self.make_agent(client).review(self.root, only_file=os.path.join(self.root, "bad.py"))
+        self.assertTrue(outcome.trace[0].ok)
+        self.assertEqual(outcome.trace[0].tool, "read_file")
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

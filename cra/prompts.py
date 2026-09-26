@@ -70,6 +70,11 @@ def build_scan_digest(scan: ScanResult, cfg: Config, *, max_chars: int = 4000) -
     """把扫描结果压缩成一段给模型看的"地图"，控制长度避免挤占上下文。"""
     lines: list[str] = []
     lines.append(f"工作区：{scan.root}")
+    if scan.scope_file:
+        lines.append(
+            f"范围：**单文件模式**，本次只审查 `{scan.scope_file}`；"
+            "访问其他路径会被工具直接拒绝，因此不要尝试浏览同目录的其他文件。"
+        )
     counts = scan.counts_by_kind()
     lines.append(
         "文件统计：共 {total} 个文件（{kinds}），累计 {size} 字节，扫描耗时 {duration:.2f}s".format(
@@ -137,9 +142,15 @@ def build_user_task(
 ) -> str:
     """构造首轮用户消息：任务 + 扫描摘要 + 输出要求。"""
     focus_text = "、".join(focus) if focus else "全部（缺陷、安全、性能、可维护性、文档）"
+    if scan.scope_file:
+        first_line = f"请审查这一个文件：{scan.scope_file}（单文件模式，其他文件不可访问）"
+        scope_line = f"审查范围：{scan.scope_file}（位于 {scan.root}）"
+    else:
+        first_line = "请对下面的代码库做一次完整的代码审查。"
+        scope_line = f"审查范围：{scan.root}"
     parts = [
-        "请对下面的代码库做一次完整的代码审查。",
-        f"审查范围：{scan.root}",
+        first_line,
+        scope_line,
         f"关注重点：{focus_text}",
         "",
         "## 预扫描结果（由确定性规则产出，未经 LLM 判断，可能包含误报）",
@@ -150,6 +161,12 @@ def build_user_task(
         "2. 判断是否存在规则未覆盖但更严重的问题。",
         "3. 调用 submit_review 提交结论（summary + findings，findings 不超过 15 条）。",
     ]
+    if scan.scope_file:
+        parts.insert(
+            6,
+            "注意：这是单文件审查，不要调用 list_files/search_code 去探索目录；"
+            "直接 read_file 精读该文件后给出结论即可。",
+        )
     if extra_instruction:
         parts.append("")
         parts.append("## 补充要求")

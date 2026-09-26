@@ -130,7 +130,12 @@ class CodeReviewAgent:
             outcome.duration = time.time() - started
             return scan_result, outcome
 
-        context = ToolContext(root=scan_result.root, cfg=self.cfg, scan=scan_result)
+        context = ToolContext(
+            root=scan_result.root,
+            cfg=self.cfg,
+            scan=scan_result,
+            scope_file=scan_result.scope_file,
+        )
         try:
             outcome = self._online_review(scan_result, context, focus, extra_instruction)
         except ConfigError as exc:

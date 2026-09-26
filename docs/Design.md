@@ -204,6 +204,7 @@ JSON 版本（`render_json`）用于 CI：包含 findings 数组、统计、Agen
 | 风险 | 防护 |
 | --- | --- |
 | 提示词注入诱导读取工作区外文件 | `fsutil.safe_path()` 用 `realpath` + `commonpath` 校验，越界直接抛 `PathSecurityError`（有测试） |
+| 审单个文件时越界读取同目录其他文件 | `ToolContext.scope_file` + `tools.base.ensure_in_scope()`：单文件模式下所有工具只允许访问被指定的那一个文件（有单测；见第 13 节自审记录里这条真实 bug） |
 | 密钥进入报告/日志 | `Config.public_dict()` 剔除 `api_key`；报告只写模型名；有单元测试断言报告与 JSON 中不含 Key |
 | 密钥进入 git | `.env` 在 `.gitignore` 中，只提交 `.env.example` |
 | 工具参数被模型乱填 | JSON Schema 校验 + 类型纠正 + 未知参数拒绝 |
@@ -271,6 +272,9 @@ JSON 版本（`render_json`）用于 CI：包含 findings 数组、统计、Agen
 5. **密钥规则误报**（把 `test-key`、测试夹具当成真密钥）→ 增加占位符与长度过滤；测试代码改用字符串拼接构造密钥，避免自伤。
 6. **文档字符串噪声 154 条** → 规则收紧为"只要求模块级公开函数/公开类"，测试文件豁免。
 7. **`_collect_extra_references` 复杂度 12**、`analysis.analyze_source` 77 行 → 拆出 `_syntax_error_result` / `_parser_failure_result` / `_fill_analysis_summary` / `_cap_findings`。
+8. **单文件审查的作用域逃逸（实测发现的真 bug）**：用它审一个 C 文件时，Agent 顺手把该文件所在目录（当时是桌面）的其他文件也读了、还对这些文件做了密钥检索。根因是"扫描只扫一个文件，但工具作用域仍指向父目录"。修复：给 `ScanResult` / `ToolContext` 增加 `scope_file`，所有工具经 `ensure_in_scope()` 校验，越界返回可解释的失败观察结果；同时提示词与摘要明确写出"单文件模式"。新增 13 个单测/回归测试（总测试数 104 → 117）。
+9. **`analyze_python` 对非 Python 文件误报**：把 `.c` 交给 Python 解析器只会得到一条"语法错误"假发现（模型得自己识破）。改为识别扩展名后明确拒绝并引导改用 `read_file`。
+10. **`scan_directory` 的 `files_scanned` 恒为 0**：该工具以 `include_files=False` 扫描后又去统计文件数，数值无意义。改为 `include_files=True`（文件清单只用于计数，不进入上下文）。
 
 **保留的"可接受"项**（刻意不改）：CLI 命令处理函数（`cmd_review` / `cmd_chat`）约 70 行，属于流程编排，拆碎反而降低可读性；`MAINT003`（参数 6~7 个）多为带默认值的公开 API，聚合反而增加使用成本；`analysis.py` 692 行（`STYLE003`）是因为规则目录与实现集中在一起便于对照阅读。
 

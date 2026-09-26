@@ -11,7 +11,7 @@ import os
 
 from ..fsutil import relpath, safe_path
 from ..scanner import scan_workspace
-from .base import ToolContext
+from .base import ToolContext, ensure_in_scope
 
 MAX_SCAN_CALLS = 3
 MAX_LISTED_FINDINGS = 25
@@ -26,9 +26,15 @@ def tool_scan_directory(ctx: ToolContext, path: str = ".", top_n: int = 8) -> st
             "请基于已有结果直接给出结论，或用 read_file / analyze_python 深挖具体文件。"
         )
 
-    target = safe_path(ctx.root, path, must_exist=True)
+    if ctx.scope_file:
+        # 单文件模式：忽略 path 参数，只汇总被指定的那个文件
+        target = os.path.join(ctx.root, ctx.scope_file)
+    else:
+        target = safe_path(ctx.root, path, must_exist=True)
+    ensure_in_scope(ctx, target)
     base = target if os.path.isdir(target) else os.path.dirname(target)
-    sub = scan_workspace(base, ctx.cfg, only_file=None if os.path.isdir(target) else target, include_files=False)
+    # include_files=True：下面要统计 files_scanned，文件清单只用于计数（不进 JSON、不进上下文）
+    sub = scan_workspace(base, ctx.cfg, only_file=None if os.path.isdir(target) else target, include_files=True)
 
     rule_counter: dict[str, int] = {}
     for finding in sub.findings:
