@@ -64,7 +64,13 @@ def safe_path(root: str, user_path: str, *, must_exist: bool = True) -> str:
     except ValueError:  # 不同盘符
         inside = False
     if not inside:
-        raise PathSecurityError(f"路径越界，已拒绝访问工作区之外的文件：{user_path}")
+        # 报错时顺带给出"该怎么办"：很多人是在 chat 里指定了一个工作区外的文件，
+        # 只需要退出对话、改用 review 子命令直接把它作为参数即可。
+        raise PathSecurityError(
+            f"路径越界，已拒绝访问工作区之外的文件：{user_path}"
+            f"（本次工作区是 {root}；若要审查该文件，请退出对话后在系统提示符下执行："
+            f'python review.py "{candidate}"）'
+        )
     if must_exist and not os.path.exists(real_candidate):
         raise PathSecurityError(f"文件不存在：{user_path}")
     return candidate
