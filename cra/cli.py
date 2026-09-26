@@ -358,10 +358,8 @@ def cmd_chat(args: argparse.Namespace) -> int:
 
     previous = store.load(session_id) if args.session else None
     if previous:
-        console.info(f"已恢复会话 {session_id}（{len(previous.get('messages', []))} 条历史消息）")
-        for message in previous.get("messages", []):
-            if message.get("role") in ("user", "assistant") and not message.get("tool_calls"):
-                memory.messages.append(message)
+        restored = memory.restore_history(previous.get("messages"))
+        console.info(f"已恢复会话 {session_id}（{restored} 条历史消息）")
 
     console.out(f"代码问答会话（{root}）；输入 /help 查看命令，/exit 退出。会话 ID：{session_id}")
 

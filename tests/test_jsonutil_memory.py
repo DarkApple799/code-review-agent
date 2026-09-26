@@ -87,5 +87,53 @@ class TestSessionStore(TempDirTestCase):
         self.assertIsNone(store.load("not-exist"))
 
 
+class TestRestoreHistory(unittest.TestCase):
+    """恢复历史会话：不得重复插入"代码库概况"，也不得留下孤儿 tool 消息。"""
+
+    PREVIOUS = [
+        {"role": "system", "content": "旧 system"},
+        {"role": "user", "content": "代码库概况"},
+        {"role": "user", "content": "问题一"},
+        {"role": "assistant", "content": "", "tool_calls": [{"id": "c1", "type": "function",
+                                                             "function": {"name": "read_file", "arguments": "{}"}}]},
+        {"role": "tool", "tool_call_id": "c1", "name": "read_file", "content": "文件内容"},
+        {"role": "assistant", "content": "回答一"},
+    ]
+
+    def make_memory(self) -> Memory:
+        memory = Memory(system_prompt="新 system")
+        memory.add_user("代码库概况")  # build_chat_agent 会先注入一份新的概况
+        return memory
+
+    def test_history_replaces_digest_instead_of_appending(self) -> None:
+        memory = self.make_memory()
+        restored = memory.restore_history(self.PREVIOUS)
+
+        self.assertEqual(restored, 3)  # 概况 + 问题一 + 回答一
+        messages = memory.messages
+        self.assertEqual(messages[0], {"role": "system", "content": "新 system"})
+        digests = [m for m in messages if m.get("content") == "代码库概况"]
+        self.assertEqual(len(digests), 1, "代码库概况只应保留一份")
+        self.assertEqual([m["role"] for m in messages], ["system", "user", "user", "assistant"])
+
+    def test_tool_messages_and_calls_are_dropped_on_restore(self) -> None:
+        memory = self.make_memory()
+        memory.restore_history(self.PREVIOUS)
+        roles = [m["role"] for m in memory.messages]
+        self.assertNotIn("tool", roles)
+        self.assertFalse(any(m.get("tool_calls") for m in memory.messages))
+
+    def test_empty_history_keeps_current_messages(self) -> None:
+        memory = self.make_memory()
+        self.assertEqual(memory.restore_history(None), 0)
+        self.assertEqual(memory.restore_history([]), 0)
+        self.assertEqual(len(memory.messages), 2)
+
+    def test_restore_survives_missing_system_message(self) -> None:
+        memory = Memory()
+        self.assertEqual(memory.restore_history([{"role": "user", "content": "hi"}]), 1)
+        self.assertEqual(memory.messages, [{"role": "user", "content": "hi"}])
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

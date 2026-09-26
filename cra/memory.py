@@ -94,6 +94,26 @@ class Memory:
             self.system_prompt = system_prompt or self.system_prompt
             self.messages.append({"role": "system", "content": self.system_prompt})
 
+    def restore_history(self, previous_messages: list[dict] | None) -> int:
+        """把上一次会话的文本消息并回记忆，返回恢复的条数。
+
+        设计要点：用历史消息**替换**（而不是追加）当前内容，只保留本轮新的 system 提示词。
+        早期实现是直接 append，结果每恢复一次会话就把"代码库概况"重复插一份，
+        白白多占约 2500 字符上下文——这是对照落盘文件时才发现的。
+        """
+        restored = [
+            dict(message)
+            for message in (previous_messages or [])
+            if message.get("role") in ("user", "assistant") and not message.get("tool_calls")
+        ]
+        if not restored:
+            return 0
+        head: list[dict] = []
+        if self.messages and self.messages[0].get("role") in SYSTEM_ROLES:
+            head = [self.messages[0]]
+        self.messages = head + restored
+        return len(restored)
+
 
 def _chars(messages: list[dict]) -> int:
     total = 0
