@@ -15,6 +15,7 @@ import os
 import re
 import threading
 import time
+import urllib.request
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
@@ -294,6 +295,24 @@ def _severity_counts(findings: list) -> dict:
 
 
 # --------------------------------------------------------------------------- #
+def self_check(url: str, console: Any) -> bool:
+    """绑定成功后立刻请求一次自己的 /api/health。
+
+    这样"服务已就绪"不是猜的：绑定端口成功但被防火墙拦截、或端口被别的程序占用时，
+    用户会立刻看到提示，而不是在浏览器里对着 ERR_CONNECTION_REFUSED 发呆。
+    """
+    try:
+        with urllib.request.urlopen(f"{url}/api/health", timeout=5) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        if console is not None:
+            console.ok(f"自检通过：{url}/api/health 返回 ok={payload.get('ok')}")
+        return True
+    except Exception as exc:  # noqa: BLE001 - 自检失败只提示，不阻断
+        if console is not None:
+            console.warn(f"自检未通过（{type(exc).__name__}: {exc}），可能被防火墙/安全软件拦截。")
+        return False
+
+
 def serve(
     cfg: Config,
     *,
@@ -303,7 +322,7 @@ def serve(
     console: Any = None,
     cwd: str | None = None,
 ) -> None:
-    """启动 Web 服务（阻塞）。"""
+    """启动 Web 服务（阻塞直到 Ctrl+C）。"""
     if cwd and os.path.isdir(cwd):
         os.chdir(cwd)
     handler = make_handler(cfg, console)
@@ -318,18 +337,32 @@ def serve(
     url = f"http://{host}:{port}"
     if console is not None:
         console.ok(f"Web 界面已启动：{url}")
+        console.info(f"  ▶ 浏览器地址栏请填**完整地址（含端口号）**：{url}")
+        console.info(f"    只输入 {host} 会打开 80 端口，本服务不在那里，浏览器会报「拒绝连接」。")
         console.info(f"  审查根目录默认为启动目录：{os.getcwd()}")
         console.info(f"  模型：{cfg.model}；模式：{'离线规则' if cfg.offline or not cfg.has_api_key() else '在线 Agent'}")
         console.info("  按 Ctrl+C 停止服务")
+
+    server_thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    server_thread.start()
+    self_check(url, console)
+
     if open_browser:
-        threading.Thread(target=webbrowser.open, args=(url,), daemon=True).start()
+        try:
+            webbrowser.open(url)
+            if console is not None:
+                console.info("  已尝试自动打开浏览器；若没弹出，请手动复制上面的地址。")
+        except Exception:  # noqa: BLE001 - 无桌面环境时忽略
+            pass
     try:
-        httpd.serve_forever()
+        while server_thread.is_alive():
+            server_thread.join(0.5)
     except KeyboardInterrupt:
         if console is not None:
             console.info("\n已停止 Web 服务。")
     finally:
+        httpd.shutdown()
         httpd.server_close()
 
 
-__all__ = ["serve", "markdown_to_html", "inline"]
+__all__ = ["serve", "markdown_to_html", "inline", "self_check"]

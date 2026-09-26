@@ -65,7 +65,8 @@ class Console:
 
     def out(self, text: str = "") -> None:
         if not self.quiet:
-            print(text)
+            # flush：把输出重定向到日志/管道时也要立刻可见（否则会攒到缓冲区才出现）
+            print(text, flush=True)
 
     def info(self, text: str) -> None:
         self.out(text)
@@ -193,7 +194,7 @@ def build_parser() -> argparse.ArgumentParser:
     web = sub.add_parser("web", help="启动轻量 Web 界面")
     web.add_argument("--host", default="127.0.0.1", help="监听地址，默认 127.0.0.1")
     web.add_argument("--port", type=int, default=8765, help="监听端口，默认 8765")
-    web.add_argument("--open", action="store_true", help="启动后自动打开浏览器")
+    web.add_argument("--no-open", action="store_true", help="不自动打开浏览器（默认会自动打开）")
     web.add_argument("--offline", action="store_true", help="界面强制使用离线规则模式")
     add_common(web)
 
@@ -412,7 +413,7 @@ def cmd_web(args: argparse.Namespace) -> int:
     cfg = _config_from_args(args, os.path.dirname(args.env_file) or None)
     if args.offline:
         cfg.offline = True
-    serve(cfg, host=args.host, port=args.port, open_browser=args.open, console=console, cwd=os.getcwd())
+    serve(cfg, host=args.host, port=args.port, open_browser=not args.no_open, console=console, cwd=os.getcwd())
     return EXIT_OK
 
 

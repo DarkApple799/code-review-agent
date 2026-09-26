@@ -63,8 +63,9 @@ python review.py scan examples --top 20
 python review.py chat examples
 python review.py chat examples --question "buggy_service.py 里最危险的问题是什么？"
 
-# ④ 轻量 Web 界面（浏览器打开 http://127.0.0.1:8765）
-python webui.py --port 8765
+# ④ 轻量 Web 界面（默认自动打开浏览器；只输入 127.0.0.1 不行，要带端口）
+python webui.py --port 8765          # → http://127.0.0.1:8765
+python webui.py --port 8765 --no-open  # 不自动开浏览器
 ```
 
 没有 Key 也想看效果？加 `--offline`：
@@ -82,7 +83,7 @@ python review.py examples --offline --out offline_report.md
 | `review` | 完整审查（规则 + LLM Agent）并生成报告 | `--out`、`--json-out`、`--focus`、`--max-steps`、`--include/--exclude`、`--offline`、`--model`、`--fail-on` |
 | `scan` | 仅确定性静态扫描（无 LLM、秒级） | `--json-out`、`--top`、`--max-files` |
 | `chat` | 就代码库交互式问答（`/help` 查看命令） | `--question`、`--session`（继续上次会话） |
-| `web` | 启动零依赖 Web 界面 | `--host`、`--port`、`--open`、`--offline` |
+| `web` | 启动零依赖 Web 界面 | `--host`、`--port`、`--no-open`、`--offline` |
 
 几个例子：
 
