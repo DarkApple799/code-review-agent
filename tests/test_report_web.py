@@ -188,5 +188,32 @@ class TestCliPort(unittest.TestCase):
                     _port(bad)
 
 
+class TestPortDiagnostics(unittest.TestCase):
+    """端口冲突诊断：拿不到信息也必须安全降级，绝不能因为诊断本身抛异常。"""
+
+    def test_never_raises(self) -> None:
+        from cra.web.server import describe_port_owner
+
+        self.assertIsInstance(describe_port_owner(8765), str)
+
+    def test_busy_port_reports_pid_when_available(self) -> None:
+        import os
+        import socket
+
+        from cra.web.server import describe_port_owner
+
+        if os.name != "nt":
+            self.skipTest("该诊断仅在 Windows 上提供")
+        with socket.socket() as sock:
+            sock.bind(("127.0.0.1", 0))
+            sock.listen(1)
+            port = sock.getsockname()[1]
+            text = describe_port_owner(port)
+        # 受限环境下可能拿不到信息（返回空串）；一旦拿到就必须是可用的提示
+        if text:
+            self.assertIn("PID", text)
+            self.assertIn("taskkill", text)
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

@@ -13,6 +13,7 @@ import html
 import json
 import os
 import re
+import subprocess
 import threading
 import time
 import urllib.request
@@ -326,6 +327,52 @@ def self_check(url: str, console: Any) -> bool:
         return False
 
 
+def describe_port_owner(port: int) -> str:
+    """尽力找出"谁占用了这个端口"，返回给用户看的提示（失败就返回空串）。
+
+    只在 Windows 上做（调用系统自带的 netstat / tasklist），且完全容错：
+    拿不到信息就不显示，绝不影响主流程。
+    """
+    if os.name != "nt":  # pragma: no cover - 平台相关
+        return ""
+    try:
+        listing = subprocess.run(
+            ["netstat", "-ano", "-p", "TCP"], capture_output=True, text=True, timeout=5
+        ).stdout
+    except Exception:  # noqa: BLE001 - 诊断信息拿不到就算了
+        return ""
+
+    pids: list[str] = []
+    for line in listing.splitlines():
+        parts = line.split()
+        if len(parts) >= 5 and parts[0].upper() == "TCP" and parts[3].upper() == "LISTENING":
+            if parts[1].endswith(f":{port}") and parts[4] not in pids:
+                pids.append(parts[4])
+    if not pids:
+        return ""
+
+    described = []
+    for pid in pids:
+        name = ""
+        try:
+            row = subprocess.run(
+                ["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"],
+                capture_output=True, text=True, timeout=5,
+            ).stdout.strip()
+            if row:
+                name = row.split(",")[0].strip('"')
+        except Exception:  # noqa: BLE001
+            pass
+        described.append(f"PID {pid}" + (f"（{name}）" if name else ""))
+
+    kill_cmds = "  ".join(f"taskkill /PID {pid} /F" for pid in pids)
+    return (
+        f"  占用端口的进程：{'、'.join(described)}\n"
+        f"  结束它（确认那是你自己启动的旧服务）：{kill_cmds}\n"
+        f"  或者换个端口：--port {port + 1}"
+    )
+
+
 def serve(
     cfg: Config,
     *,
@@ -347,8 +394,8 @@ def serve(
             # 一次性输出，保证提示顺序稳定（拆成多次 print 时 stdout/stderr 会交错）
             console.error(
                 f"无法监听 {host}:{port} —— {type(exc).__name__}: {exc}\n"
-                "  端口被占用时换一个：--port 9000\n"
-                "  端口范围必须是 1~65535。"
+                + describe_port_owner(port)
+                + "\n  端口范围必须是 1~65535。"
             )
         raise SystemExit(1) from exc
 
@@ -383,4 +430,4 @@ def serve(
         httpd.server_close()
 
 
-__all__ = ["serve", "markdown_to_html", "inline", "self_check"]
+__all__ = ["serve", "markdown_to_html", "inline", "self_check", "describe_port_owner"]
