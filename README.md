@@ -74,6 +74,15 @@ python webui.py --port 8765 --no-open  # 不自动开浏览器
 python review.py examples --offline --out offline_report.md
 ```
 
+### 2.4 Windows 一键启动（可选）
+
+不想记命令、也不想处理盘符切换，直接双击或用 cmd 运行项目根目录下的两个脚本：
+
+| 脚本 | 作用 |
+| --- | --- |
+| `start-web.cmd` | 自动切到项目目录并启动 Web 界面，然后打开浏览器 |
+| `review.cmd <路径> [参数]` | 在**任意目录**下审查指定目录，例如 `review.cmd "D:\proj" scan` |
+
 ---
 
 ## 3. 命令与参数
@@ -276,6 +285,12 @@ python -m unittest discover -s tests -t .
 
 **Q：Windows 控制台中文乱码？**
 程序启动时会自动把 stdout/stderr 切成 UTF-8；若仍有问题，`chcp 65001` 或设置 `PYTHONIOENCODING=utf-8`。
+
+**Q：在 cmd 里 `cd` 到 G 盘没反应，提示符还停在 C 盘？**
+cmd 的 `cd` **不换盘符**，要用 `cd /d G:\代码路径`；或者先输 `G:` 再 `cd`。也可以直接用 `start-web.cmd` / `review.cmd`，它们会自动切到脚本所在目录。
+
+**Q：打开 `127.0.0.1` 显示"拒绝连接"？**
+必须带端口号：`http://127.0.0.1:8765`。不带端口走的是 80 端口，本服务不在那里。
 
 **Q：审查很慢 / 很贵？**
 `--max-steps` 控制推理轮数，`--max-files` 控制扫描规模，`scan` 子命令完全免费。一次典型审查（10 个文件内）约 8 次模型请求、2 万 token 量级。

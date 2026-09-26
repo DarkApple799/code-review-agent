@@ -14,6 +14,9 @@ from dataclasses import asdict, dataclass, field
 DEFAULT_BASE_URL = "https://api.deepseek.com"
 DEFAULT_MODEL = "deepseek-chat"
 
+#: 本项目的安装目录：用于在任何工作目录下都能找到随项目分发的 .env
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 #: 默认忽略的目录：版本控制元数据、依赖、缓存、构建产物、虚拟环境。
 DEFAULT_IGNORE_DIRS: tuple[str, ...] = (
     ".git", ".hg", ".svn", ".idea", ".vscode", ".vs", "__pycache__",
@@ -205,7 +208,36 @@ class Config:
         return "；".join(parts) if parts else "全部源码文件（自动忽略依赖与构建目录）"
 
 
-def load_config(root: str | None = None, **overrides) -> Config:
-    """载入 .env（如存在）后构造配置。"""
-    load_env(root)
+def load_config(root: str | None = None, env_file: str | None = None, **overrides) -> Config:
+    """按优先级查找并载入 .env，然后构造配置。
+
+    查找顺序（先找到先用）：
+        1) 显式指定的 --env-file；
+        2) <审查根目录>/.env；
+        3) 本项目自带的 .env（这样在任意目录调用 review.py 也能读到密钥）；
+        4) 当前工作目录的 .env。
+    """
+    for candidate in _env_candidates(root, env_file):
+        if candidate and os.path.isfile(candidate):
+            load_dotenv_file(candidate)
+            break
     return Config.from_env(**overrides)
+
+
+def _env_candidates(root: str | None, env_file: str | None) -> list[str]:
+    candidates: list[str] = []
+    if env_file:
+        candidates.append(env_file)
+    if root:
+        candidates.append(os.path.join(root, ".env"))
+    candidates.append(os.path.join(PROJECT_ROOT, ".env"))
+    candidates.append(os.path.join(os.getcwd(), ".env"))
+    return candidates
+
+
+def load_dotenv_file(path: str) -> dict[str, str]:
+    """载入指定 .env 文件（不覆盖已存在的真实环境变量）。"""
+    loaded = parse_env_file(path)
+    for key, value in loaded.items():
+        os.environ.setdefault(key, value)
+    return loaded

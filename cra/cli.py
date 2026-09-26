@@ -215,6 +215,7 @@ def _config_from_args(args: argparse.Namespace, root: str | None = None) -> Conf
     )
     return load_config(
         root,
+        env_file=getattr(args, "env_file", None),
         include=include,
         exclude=exclude,
         offline=offline,
