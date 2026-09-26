@@ -1,20 +1,27 @@
 @echo off
-rem 双击即用：启动 Code Review Agent 的 Web 界面（自动切到本脚本所在目录）
+rem ---------------------------------------------------------------
+rem  Code Review Agent - one click Web UI launcher
+rem  (This file is kept PURE ASCII on purpose: a .cmd containing
+rem   non-ASCII text can be mis-parsed by cmd.exe under a GBK code page.)
+rem ---------------------------------------------------------------
+setlocal
 chcp 65001 >nul
 cd /d "%~dp0"
-echo ================================================
+echo ==========================================================
 echo   Code Review Agent - Web UI
-echo   目录: %CD%
-echo   浏览器地址: http://127.0.0.1:8765  （端口号不能省）
-echo ================================================
+echo   Working dir : %CD%
+echo   Open in browser: http://127.0.0.1:8765   (port is required)
+echo ==========================================================
 echo.
 python webui.py %*
-if errorlevel 1 (
+set RC=%ERRORLEVEL%
+if not "%RC%"=="0" (
   echo.
-  echo [提示] 启动失败。常见原因：
-  echo   1) 没装 Python，或 python 不在 PATH 中（可试 py webui.py）
-  echo   2) 端口被占用，换一个：python webui.py --port 9000
-  echo   3) 缺少 .env（复制 .env.example 为 .env 并填入 DEEPSEEK_API_KEY）
+  echo [ERROR] exit code %RC%
+  echo   1^) Python not found or not in PATH - try: py webui.py
+  echo   2^) Port already in use - try: python webui.py --port 9000
+  echo   3^) Missing .env - copy .env.example to .env and set DEEPSEEK_API_KEY
 )
 echo.
 pause
+endlocal

@@ -1,10 +1,17 @@
 @echo off
-rem 在任意目录下审查代码（子命令写在路径前后都行）：
-rem   review.cmd                  审查当前目录
-rem   review.cmd "D:\proj"        审查指定目录
-rem   review.cmd "D:\proj" scan   只跑静态规则（不联网、免费）
-rem   review.cmd "D:\proj" --focus security --offline
+rem ---------------------------------------------------------------
+rem  Review any project without changing directory:
+rem    review.cmd                     review current directory
+rem    review.cmd "D:\proj"           review the given directory
+rem    review.cmd "D:\proj" scan      static rules only (offline, free)
+rem    review.cmd "D:\proj" --focus security --offline
+rem  (Kept PURE ASCII so cmd.exe never mis-parses it.)
+rem ---------------------------------------------------------------
+setlocal
 chcp 65001 >nul
 python "%~dp0review.py" %*
+set RC=%ERRORLEVEL%
 echo.
+echo [exit code %RC%]  0=ok  1=usage/config  2=auth  3=fail-on threshold hit
 pause
+endlocal

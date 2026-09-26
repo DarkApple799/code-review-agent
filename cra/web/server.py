@@ -33,6 +33,19 @@ STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 #: 同一时刻只跑一个审查任务（演示用，避免并发烧 token）
 _REVIEW_LOCK = threading.Lock()
 
+
+class _WebServer(ThreadingHTTPServer):
+    """定制版 HTTP 服务。
+
+    关键点：Windows 上 SO_REUSEADDR 允许**第二个进程绑定同一端口**，
+    于是"双击两次启动脚本"会静默出现两个服务、请求落到哪个全看运气。
+    这里在 Windows 下关掉它，端口冲突时直接报错，行为可预期。
+    """
+
+    daemon_threads = True
+    if os.name == "nt":  # pragma: no cover - 平台相关
+        allow_reuse_address = False
+
 _FENCE_RE = re.compile(r"^```")
 _TABLE_SEP_RE = re.compile(r"^\|[\s\-:|]+\|$")
 
@@ -327,11 +340,16 @@ def serve(
         os.chdir(cwd)
     handler = make_handler(cfg, console)
     try:
-        httpd = ThreadingHTTPServer((host, port), handler)
-    except OSError as exc:
+        httpd = _WebServer((host, port), handler)
+    except (OSError, OverflowError, ValueError) as exc:
+        # 端口被占用、端口越界、地址非法等，都给出可操作的提示而不是堆栈
         if console is not None:
-            console.error(f"无法监听 {host}:{port} —— {exc}")
-            console.info(f"提示：端口被占用时可用 --port 指定其他端口，例如 --port {port + 1}")
+            # 一次性输出，保证提示顺序稳定（拆成多次 print 时 stdout/stderr 会交错）
+            console.error(
+                f"无法监听 {host}:{port} —— {type(exc).__name__}: {exc}\n"
+                "  端口被占用时换一个：--port 9000\n"
+                "  端口范围必须是 1~65535。"
+            )
         raise SystemExit(1) from exc
 
     url = f"http://{host}:{port}"

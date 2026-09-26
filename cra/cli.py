@@ -128,6 +128,17 @@ def make_progress(console: Console):
 # --------------------------------------------------------------------------- #
 # 参数解析
 # --------------------------------------------------------------------------- #
+def _port(value: str) -> int:
+    """argparse 类型：把端口限制在 1~65535，非法值给出干净的错误提示而不是堆栈。"""
+    try:
+        port = int(value)
+    except (TypeError, ValueError) as exc:
+        raise argparse.ArgumentTypeError(f"端口必须是整数，收到 {value!r}") from exc
+    if not 1 <= port <= 65535:
+        raise argparse.ArgumentTypeError(f"端口必须在 1~65535 之间，收到 {port}")
+    return port
+
+
 def build_parser() -> argparse.ArgumentParser:
     """构造 argparse 解析器（review / scan / chat / web 四个子命令）。"""
     parser = argparse.ArgumentParser(
@@ -193,7 +204,7 @@ def build_parser() -> argparse.ArgumentParser:
     # -- web --
     web = sub.add_parser("web", help="启动轻量 Web 界面")
     web.add_argument("--host", default="127.0.0.1", help="监听地址，默认 127.0.0.1")
-    web.add_argument("--port", type=int, default=8765, help="监听端口，默认 8765")
+    web.add_argument("--port", type=_port, default=8765, help="监听端口，默认 8765（范围 1~65535）")
     web.add_argument("--no-open", action="store_true", help="不自动打开浏览器（默认会自动打开）")
     web.add_argument("--offline", action="store_true", help="界面强制使用离线规则模式")
     add_common(web)

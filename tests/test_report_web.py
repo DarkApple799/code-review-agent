@@ -169,5 +169,24 @@ class TestWebServer(ReportTestBase):
         self.assertFalse(data["ok"])
 
 
+class TestCliPort(unittest.TestCase):
+    """端口参数必须被限制在合法范围，避免把 Python 堆栈抛给用户。"""
+
+    def test_valid_port(self) -> None:
+        from cra.cli import _port
+
+        self.assertEqual(_port("8765"), 8765)
+
+    def test_invalid_ports_are_rejected(self) -> None:
+        import argparse
+
+        from cra.cli import _port
+
+        for bad in ("0", "65536", "99999", "-1", "abc"):
+            with self.subTest(port=bad):
+                with self.assertRaises(argparse.ArgumentTypeError):
+                    _port(bad)
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
