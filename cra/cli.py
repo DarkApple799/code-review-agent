@@ -103,6 +103,27 @@ def setup_console_encoding() -> None:
                 pass
 
 
+def looks_like_shell_command(text: str) -> bool:
+    """判断用户是不是把「系统命令」粘进了 chat 的对话输入框。
+
+    典型误用：在 `你 >` 提示符下粘贴 `python review.py examples --out r.md`，
+    结果被当成问题发给模型，白烧一堆 token 还答非所问。
+    这里只匹配本项目入口和明显是 shell 的动词，避免误伤
+    （例如"python 的 GIL 是什么"这类正常提问不会被拦）。
+    """
+    stripped = (text or "").lstrip("\ufeff").strip().lstrip(">").strip()
+    lowered = stripped.lower()
+    # 只匹配"确实是 shell 调用"的形式；故意不含裸的 "review.py "、 "webui.py "，
+    # 否则"review.py 是怎么组织的"这类正常提问会被误拦。
+    prefixes = (
+        "python review.py", "python webui.py", "python -m cra", "python.exe review.py",
+        "py review.py", "py webui.py", "./review.py", "./webui.py",
+        "cd ", "cd/", "git ", "pip ", "pip3 ", "taskkill ",
+        "start-web.cmd", "review.cmd",
+    )
+    return lowered.startswith(prefixes)
+
+
 def make_progress(console: Console):
     """把 Agent 的进度事件翻译成终端输出（工具调用、步数、降级提示）。"""
 
@@ -383,7 +404,8 @@ def cmd_chat(args: argparse.Namespace) -> int:
 
     while True:
         try:
-            question = input("你 > ").strip()
+            # lstrip BOM：管道/脚本喂进来的第一行可能带 UTF-8 BOM（Windows 上常见）
+            question = input("你 > ").lstrip("\ufeff").strip()
         except (EOFError, KeyboardInterrupt):
             console.out("")
             break
@@ -407,6 +429,11 @@ def cmd_chat(args: argparse.Namespace) -> int:
         if question == "/save":
             path = store.save(session_id, messages=memory.to_messages(), meta={"root": root})
             console.ok(f"会话已保存：{path}")
+            continue
+        if looks_like_shell_command(question):
+            console.warn("这看起来是系统命令行，不是给 Agent 的提问。")
+            console.info("  这个 `你 >` 是对话输入框：要执行命令请先输入 /exit 退出，再在系统提示符下运行。")
+            console.info("  如果确实想让我查代码，请用自然语言提问，例如：buggy_service.py 有什么安全问题？")
             continue
         code = handle(question)
         if code not in (EXIT_OK,):
